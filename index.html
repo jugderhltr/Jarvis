@@ -2,15 +2,126 @@
 <html lang="mn">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
 <title>JARVIS</title>
 <style>
-  body { margin:0; background:#000; color:#00e5ff; font-family:sans-serif;
-         display:flex; align-items:center; justify-content:center; height:100vh; }
-  h1 { letter-spacing:6px; text-shadow:0 0 20px #00e5ff; }
+:root{--c:#00e5ff;--b:#1e90ff}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#000;color:var(--c);font-family:system-ui,sans-serif}
+body{display:flex;flex-direction:column;height:100dvh;background:radial-gradient(circle at 50% 25%,#02202b,#000 70%)}
+header{display:flex;justify-content:space-between;align-items:flex-start;padding:12px 16px;font-size:13px}
+#clock{font-size:24px;letter-spacing:2px;text-shadow:0 0 10px var(--c)}
+#date{opacity:.7;font-size:12px}
+#net{text-align:right;font-size:12px;letter-spacing:1px}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:#2f2;color:#2f2;box-shadow:0 0 8px currentColor}
+.dot.off{background:#f44;color:#f44}
+.core-wrap{display:flex;justify-content:center;padding:4px 0}
+.core{position:relative;width:150px;height:150px}
+.ring{position:absolute;inset:0;border-radius:50%;border:2px solid transparent;border-top-color:var(--c);border-bottom-color:var(--b);box-shadow:0 0 18px #00e5ff55;animation:spin 6s linear infinite}
+.r2{inset:14px;animation-duration:4s;animation-direction:reverse;border-top-color:var(--b);border-bottom-color:var(--c)}
+.r3{inset:30px;animation-duration:9s;border:2px dashed var(--c)}
+.orb{position:absolute;inset:50px;border-radius:50%;background:radial-gradient(circle,#fff,var(--c) 40%,#0066aa);box-shadow:0 0 30px var(--c),0 0 60px var(--b);animation:pulse 3s ease-in-out infinite}
+.core.listening .orb{animation-duration:.8s}
+.core.listening .ring{animation-duration:2s}
+.core.thinking .ring{animation-duration:1s}
+.core.thinking .orb{animation-duration:.5s;filter:hue-rotate(40deg)}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{50%{transform:scale(1.18)}}
+#state{text-align:center;font-size:12px;letter-spacing:3px;opacity:.85;height:18px}
+#wave{display:flex;justify-content:center;align-items:center;gap:3px;height:36px}
+#wave i{width:3px;height:4px;background:var(--c);border-radius:2px;box-shadow:0 0 6px var(--c);transition:height .1s}
+#chat{flex:1;overflow-y:auto;padding:10px 14px;display:flex;flex-direction:column;gap:8px}
+.m{max-width:85%;padding:8px 12px;border-radius:12px;font-size:15px;line-height:1.4;border:1px solid #00e5ff55}
+.me{align-self:flex-end;background:#00e5ff18;color:#dff}
+.ai{align-self:flex-start;background:#0a1a22;color:#9ef}
+footer{display:flex;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));align-items:center}
+#inp{flex:1;min-width:0;background:#041018;border:1px solid var(--c);border-radius:22px;color:#fff;padding:12px 16px;font-size:16px;outline:none}
+button{flex:none;border:1px solid var(--c);background:#04202b;color:var(--c);border-radius:50%;width:48px;height:48px;font-size:20px;box-shadow:0 0 12px #00e5ff66}
+#mic.on{background:var(--c);color:#000;box-shadow:0 0 25px var(--c)}
 </style>
 </head>
 <body>
-  <h1>JARVIS ONLINE</h1>
+<header>
+  <div><div id="clock">--:--:--</div><div id="date"></div></div>
+  <div id="net"><span class="dot" id="dot"></span><span id="netTxt">ONLINE</span></div>
+</header>
+
+<div class="core-wrap">
+  <div class="core" id="core">
+    <div class="ring"></div><div class="ring r2"></div><div class="ring r3"></div><div class="orb"></div>
+  </div>
+</div>
+<div id="state">БЭЛЭН</div>
+<div id="wave"></div>
+
+<div id="chat">
+  <div class="m ai">Сайн байна уу. Би JARVIS. Одоогоор зөвхөн дэлгэц бэлэн, AI-г дараагийн алхмуудад холбоно.</div>
+</div>
+
+<footer>
+  <button id="mic" aria-label="Микрофон">🎤</button>
+  <input id="inp" placeholder="Бичих / Type here..." autocomplete="off">
+  <button id="send" aria-label="Илгээх">➤</button>
+</footer>
+
+<script>
+const $ = id => document.getElementById(id);
+const core = $('core'), stateEl = $('state'), chat = $('chat'), inp = $('inp');
+
+// Цаг, огноо
+function tick(){
+  const d = new Date();
+  $('clock').textContent = d.toLocaleTimeString('en-GB');
+  $('date').textContent = d.getFullYear() + '-' +
+    String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+tick(); setInterval(tick, 1000);
+
+// Онлайн/офлайн
+function net(){
+  const on = navigator.onLine;
+  $('dot').className = 'dot' + (on ? '' : ' off');
+  $('netTxt').textContent = on ? 'ONLINE' : 'OFFLINE';
+}
+net(); addEventListener('online', net); addEventListener('offline', net);
+
+// Долгион
+const wave = $('wave');
+for(let i=0;i<28;i++) wave.appendChild(document.createElement('i'));
+let mode = 'idle';
+setInterval(() => {
+  wave.querySelectorAll('i').forEach(b => {
+    b.style.height = (mode === 'idle') ? '4px' : (4 + Math.random()*30) + 'px';
+  });
+}, 110);
+
+function setMode(m, text){
+  mode = m;
+  core.className = 'core' + (m === 'idle' ? '' : ' ' + m);
+  stateEl.textContent = text;
+}
+
+// Чат
+function add(text, cls){
+  const d = document.createElement('div');
+  d.className = 'm ' + cls; d.textContent = text;
+  chat.appendChild(d); chat.scrollTop = chat.scrollHeight;
+}
+function sendMsg(){
+  const t = inp.value.trim();
+  if(!t) return;
+  add(t, 'me'); inp.value = '';
+  add('AI хараахан холбогдоогүй байна. 7-р алхамд холбоно.', 'ai');
+}
+$('send').onclick = sendMsg;
+inp.addEventListener('keydown', e => { if(e.key === 'Enter') sendMsg(); });
+
+// Микрофон товч (одоогоор зөвхөн дэлгэцийн хөдөлгөөн, дуу хоолой танилт 5-р алхамд)
+$('mic').onclick = () => {
+  const on = $('mic').classList.toggle('on');
+  setMode(on ? 'listening' : 'idle', on ? 'СОНСОЖ БАЙНА (ЗАГВАР)' : 'БЭЛЭН');
+};
+</script>
 </body>
 </html>
