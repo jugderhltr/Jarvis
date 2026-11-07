@@ -32,7 +32,7 @@ header{display:flex;justify-content:space-between;align-items:flex-start;padding
 #wave{display:flex;justify-content:center;align-items:center;gap:3px;height:36px}
 #wave i{width:3px;height:4px;background:var(--c);border-radius:2px;box-shadow:0 0 6px var(--c);transition:height .1s}
 #chat{flex:1;overflow-y:auto;padding:10px 14px;display:flex;flex-direction:column;gap:8px}
-.m{max-width:85%;padding:8px 12px;border-radius:12px;font-size:15px;line-height:1.4;border:1px solid #00e5ff55}
+.m{max-width:85%;padding:8px 12px;border-radius:12px;font-size:15px;line-height:1.4;border:1px solid #00e5ff55;white-space:pre-wrap}
 .me{align-self:flex-end;background:#00e5ff18;color:#dff}
 .ai{align-self:flex-start;background:#0a1a22;color:#9ef}
 footer{display:flex;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));align-items:center}
@@ -55,9 +55,7 @@ button{flex:none;border:1px solid var(--c);background:#04202b;color:var(--c);bor
 <div id="state">БЭЛЭН</div>
 <div id="wave"></div>
 
-<div id="chat">
-  <div class="m ai">Сайн байна уу. Би JARVIS. Одоогоор зөвхөн дэлгэц бэлэн, AI-г дараагийн алхмуудад холбоно.</div>
-</div>
+<div id="chat"></div>
 
 <footer>
   <button id="mic" aria-label="Микрофон">🎤</button>
@@ -102,22 +100,61 @@ function setMode(m, text){
   stateEl.textContent = text;
 }
 
-// Чат
+// Чат + Gemini
+const API = 'https://jarvis-api.amandahcereggl.workers.dev';
+const SYSTEM = 'Чи JARVIS, Tony Stark-ийн туслах шиг эелдэг, тайван, ухаалаг, бага зэрэг ёжтой AI туслах. Хэрэглэгчийг "Sir" (Монголоор "эрхэм ээ") гэж дууд. Хэрэглэгч ямар хэлээр бичсэн бол тэр хэлээр (Монгол эсвэл Англи) хариул. Хариултаа товч, тодорхой байлга. Мэдэхгүй зүйлээ мэдэхгүй гэж шударгаар хэл.';
+
+let history = [];
+try { history = JSON.parse(localStorage.getItem('jarvis_hist') || '[]'); } catch(e){}
+function save(){
+  try { localStorage.setItem('jarvis_hist', JSON.stringify(history.slice(-40))); } catch(e){}
+}
 function add(text, cls){
   const d = document.createElement('div');
   d.className = 'm ' + cls; d.textContent = text;
   chat.appendChild(d); chat.scrollTop = chat.scrollHeight;
 }
-function sendMsg(){
+add('Сайн байна уу, эрхэм ээ. Би JARVIS. Юугаар туслах вэ?', 'ai');
+history.forEach(h => add(h.parts[0].text, h.role === 'user' ? 'me' : 'ai'));
+
+let busy = false;
+async function sendMsg(){
   const t = inp.value.trim();
-  if(!t) return;
+  if(!t || busy) return;
+  busy = true;
   add(t, 'me'); inp.value = '';
-  add('AI хараахан холбогдоогүй байна. 7-р алхамд холбоно.', 'ai');
+  history.push({role:'user', parts:[{text:t}]});
+  setMode('thinking', 'БОДОЖ БАЙНА');
+  try {
+    let ctx = history.slice(-20);
+    while(ctx.length && ctx[0].role !== 'user') ctx.shift();
+    const r = await fetch(API, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({system: SYSTEM, contents: ctx})
+    });
+    const data = await r.json();
+    if(!r.ok){
+      const e = data.error;
+      throw new Error((e && e.message) || (typeof e === 'string' ? e : 'HTTP ' + r.status));
+    }
+    const parts = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts;
+    const reply = parts ? parts.map(p => p.text || '').join('') : '';
+    if(!reply) throw new Error('Хоосон хариу ирлээ');
+    history.push({role:'model', parts:[{text:reply}]});
+    save();
+    add(reply, 'ai');
+  } catch(e){
+    history.pop();
+    add('Алдаа: ' + (e.message || e), 'ai');
+  }
+  busy = false;
+  setMode('idle', 'БЭЛЭН');
 }
 $('send').onclick = sendMsg;
 inp.addEventListener('keydown', e => { if(e.key === 'Enter') sendMsg(); });
 
-// Микрофон товч (одоогоор зөвхөн дэлгэцийн хөдөлгөөн, дуу хоолой танилт 5-р алхамд)
+// Микрофон товч (одоогоор зөвхөн дэлгэцийн хөдөлгөөн, дуу хоолой танилт дараагийн алхамд)
 $('mic').onclick = () => {
   const on = $('mic').classList.toggle('on');
   setMode(on ? 'listening' : 'idle', on ? 'СОНСОЖ БАЙНА (ЗАГВАР)' : 'БЭЛЭН');
